@@ -1,0 +1,153 @@
+version: '3'
+services:
+  eureka-server:
+    image: cike/eureka-server
+    container_name: sc-eureka-server
+    restart: always
+    volumes:
+      - ./data/eureka-server/logs:/var/logs
+      - ./data/pinpoint-agent:/pinpoint-agent
+    networks:
+      - sc-net
+    ports:
+      - 8761:8761
+    environment:
+      - RABBIT_MQ_HOST=rabbitmq
+      - RABBIT_MQ_PORT=5672
+      - RABBIT_MQ_USERNAME=guest
+      - RABBIT_MQ_PASSWORD=guest
+      - JAVA_OPTS=-javaagent:${PINPOINT_AGENT_JAR} -Dpinpoint.agentId=eureka-server1 -Dpinpoint.applicationName=eureka-server
+    depends_on:
+      - rabbitmq
+
+  apollo:
+    image: idoop/docker-apollo:latest
+    container_name: sc-apollo-server
+    restart: always
+    # portal若出现504错误,则将网络模式改为host. host模式下如果想改端口,参考下方修改端口的环境变量
+    # network_mode: "host"
+    # 如果需要查看日志,挂载容器中的/opt路径出来即可.
+    networks:
+      - sc-net
+    ports:
+      - 8070:8070
+      - 8080:8080
+    volumes:
+      - ./data/config-server/logs:/opt
+    environment:
+      # 开启Portal,默认端口: 8070
+      PORTAL_DB: jdbc:mysql://apollo-db:3306/ApolloPortalDB?characterEncoding=utf8
+      PORTAL_DB_USER: root
+      PORTAL_DB_PWD: root123
+      # 开启dev环境, 默认端口: config 8080, admin 8090
+      DEV_DB: jdbc:mysql://apollo-db:3306/ApolloConfigDB?characterEncoding=utf8
+      DEV_DB_USER: root
+      DEV_DB_PWD: root123
+      # 指定远程uat地址
+      #UAT_URL: http://192.168.1.2:8080
+    depends_on:
+      - apollo-db
+
+  config-server:
+    image: cike/config-server
+    container_name: sc-config-server
+    restart: always
+    volumes:
+      - ./data/config-server/logs:/var/logs
+      - ./data/pinpoint-agent:/pinpoint-agent
+    networks:
+      - sc-net
+    ports:
+      - 8888:8888
+    environment:
+      - RABBIT_MQ_HOST=rabbitmq
+      - RABBIT_MQ_PORT=5672
+      - EUREKA_ZONE_HOST=eureka-server
+      - EUREKA_ZONE_PORT=8761
+      - JAVA_OPTS=-javaagent:${PINPOINT_AGENT_JAR} -Dpinpoint.agentId=config-server1 -Dpinpoint.applicationName=config-server
+    depends_on:
+      - eureka-server
+
+  gateway:
+    image: cike/gateway-web
+    container_name: sc-gateway-web
+    restart: always
+    volumes:
+      - ./data/gateway-web/logs:/var/logs
+      - ./data/pinpoint-agent:/pinpoint-agent
+    networks:
+      - sc-net
+    ports:
+      - 8443:8443
+    environment:
+      - RABBIT_MQ_HOST=rabbitmq
+      - RABBIT_MQ_PORT=5672
+      - RABBIT_MQ_USERNAME=guest
+      - RABBIT_MQ_PASSWORD=guest
+      - EUREKA_ZONE_HOST=eureka-server
+      - EUREKA_ZONE_PORT=8761
+      - JAVA_OPTS=-javaagent:${PINPOINT_AGENT_JAR} -Dpinpoint.agentId=gateway-web1 -Dpinpoint.applicationName=gateway-web
+    depends_on:
+      - eureka-server
+      - authorization-server
+      - authentication-server
+
+  authorization-server:
+    image: cike/authorization-server
+    container_name: sc-authorization-server
+    restart: always
+    volumes:
+      - ./data/authorization-server/logs:/var/logs
+      - ./data/pinpoint-agent:/pinpoint-agent
+    networks:
+      - sc-net
+    ports:
+      - 8000:8000
+    environment:
+      - RABBIT_MQ_HOST=rabbitmq
+      - RABBIT_MQ_PORT=5672
+      - RABBIT_MQ_USERNAME=guest
+      - RABBIT_MQ_PASSWORD=guest
+      - EUREKA_ZONE_HOST=eureka-server
+      - EUREKA_ZONE_PORT=8761
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=123456
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=postgres
+      - JAVA_OPTS=-javaagent:${PINPOINT_AGENT_JAR} -Dpinpoint.agentId=authorization-server1 -Dpinpoint.applicationName=authorization-server
+    depends_on:
+      - eureka-server
+      - postgres
+
+  authentication-server:
+    image: cike/authentication-server
+    container_name: sc-authentication-server
+    restart: always
+    volumes:
+      - ./data/authentication-server/logs:/var/logs
+      - ./data/pinpoint-agent:/pinpoint-agent
+    networks:
+      - sc-net
+    ports:
+      - 8001:8001
+    environment:
+      - RABBIT_MQ_HOST=rabbitmq
+      - RABBIT_MQ_PORT=5672
+      - RABBIT_MQ_USERNAME=guest
+      - RABBIT_MQ_PASSWORD=guest
+      - EUREKA_ZONE_HOST=eureka-server
+      - EUREKA_ZONE_PORT=8761
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=123456
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=postgres
+      - JAVA_OPTS=-javaagent:${PINPOINT_AGENT_JAR} -Dpinpoint.agentId=authentication-server1 -Dpinpoint.applicationName=authentication-server
+    depends_on:
+      - eureka-server
+      - postgres
